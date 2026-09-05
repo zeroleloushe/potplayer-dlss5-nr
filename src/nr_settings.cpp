@@ -1,4 +1,4 @@
-// Live settings panel for DLSS 5 NR. Writes
+﻿// Live settings panel for DLSS 5 NR. Writes
 // %LOCALAPPDATA%\potplayer-dlss5-nr\settings.ini which the plugin reloads
 // on the next frame — no need to restart the video.
 
@@ -250,7 +250,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show)
 	const int ww = 450, hh = 560;
 	RECT wr{0, 0, ww, hh};
 	AdjustWindowRect(&wr, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE);
-	g_hwnd = CreateWindowExW(0, wc.lpszClassName, L"DLSS 5 NR — настройки",
+	g_hwnd = CreateWindowExW(0, wc.lpszClassName, L"DLSS 5 NR - настройки",
 	                         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT,
 	                         wr.right - wr.left, wr.bottom - wr.top, nullptr, nullptr, inst, nullptr);
 

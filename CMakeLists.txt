@@ -60,6 +60,7 @@ add_executable(nr-settings WIN32 src/nr_settings.cpp)
 target_include_directories(nr-settings PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(nr-settings PRIVATE comctl32 dwmapi)
 target_compile_definitions(nr-settings PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_compile_options(nr-settings PRIVATE /utf-8)
 set_target_properties(nr-settings PROPERTIES OUTPUT_NAME "nr-settings")
 
 install(TARGETS nr-caller-shim DLSS5NR vsdlss5nr nr-settings RUNTIME DESTINATION bin)
