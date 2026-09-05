@@ -124,20 +124,13 @@ public:
 		const int spitch = src->GetPitch();
 		const int dpitch = dst->GetPitch();
 
-		std::vector<uint8_t> in((size_t)w * h * 4), out((size_t)w * h * 4);
-		for (int y = 0; y < h; ++y) {
-			const uint8_t *row = sp + (size_t)(h - 1 - y) * spitch;
-			memcpy(in.data() + (size_t)y * w * 4, row, (size_t)w * 4);
-		}
-
-		const bool ok = nrbridge_seh_process(in.data(), w * 4, out.data(), w * 4, w, h, p);
+		// AviSynth RGB is bottom-up. Pass the visual-top row with negative pitch
+		// so the bridge sees a top-down image without an extra CPU copy.
+		const bool ok = nrbridge_seh_process(sp + (size_t)(h - 1) * (size_t)spitch, -spitch,
+		                                    dp + (size_t)(h - 1) * (size_t)dpitch, -dpitch, w, h, p);
 		if (!ok) {
 			env->BitBlt(dp, dpitch, sp, spitch, vi.BytesFromPixels(w), h);
 			return dst;
-		}
-		for (int y = 0; y < h; ++y) {
-			uint8_t *row = dp + (size_t)(h - 1 - y) * dpitch;
-			memcpy(row, out.data() + (size_t)y * w * 4, (size_t)w * 4);
 		}
 		return dst;
 	}

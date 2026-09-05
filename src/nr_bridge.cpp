@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdarg>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -115,6 +116,8 @@ ComPtr<ID3D12Resource> g_color;
 ComPtr<ID3D12Resource> g_output;
 ComPtr<ID3D12Resource> g_upload;
 ComPtr<ID3D12Resource> g_readback;
+void *g_upload_ptr = nullptr;
+void *g_readback_ptr = nullptr;
 UINT g_row_pitch = 0;
 UINT64 g_total_bytes = 0;
 int g_width = 0;
@@ -445,6 +448,14 @@ void ReleaseFeatureAndResources()
 			g_core_release(g_feature);
 		g_feature = nullptr;
 	}
+	if (g_upload && g_upload_ptr) {
+		g_upload->Unmap(0, nullptr);
+		g_upload_ptr = nullptr;
+	}
+	if (g_readback && g_readback_ptr) {
+		g_readback->Unmap(0, nullptr);
+		g_readback_ptr = nullptr;
+	}
 	g_color.Reset();
 	g_output.Reset();
 	g_upload.Reset();
@@ -502,6 +513,16 @@ bool EnsureResources(int width, int height)
 	g_readback = CreateBuffer(g_total_bytes, D3D12_HEAP_TYPE_READBACK);
 	if (!g_color || !g_output || !g_upload || !g_readback) {
 		SetError("Failed to allocate %dx%d NR textures", width, height);
+		ReleaseFeatureAndResources();
+		return false;
+	}
+	if (FAILED(g_upload->Map(0, nullptr, &g_upload_ptr)) || !g_upload_ptr) {
+		SetError("persistent upload Map failed");
+		ReleaseFeatureAndResources();
+		return false;
+	}
+	if (FAILED(g_readback->Map(0, nullptr, &g_readback_ptr)) || !g_readback_ptr) {
+		SetError("persistent readback Map failed");
 		ReleaseFeatureAndResources();
 		return false;
 	}
@@ -686,29 +707,30 @@ bool process(const uint8_t *src_bgra, int src_row_pitch, uint8_t *dst_bgra, int 
 	}
 	if (!EnsureResources(width, height))
 		return false;
+	if (!g_upload_ptr || !g_readback_ptr) {
+		SetError("upload/readback not mapped");
+		return false;
+	}
 	if (!ResetList()) {
 		SetError("command list reset failed");
 		return false;
 	}
 
-	void *mapped = nullptr;
-	if (FAILED(g_upload->Map(0, nullptr, &mapped)) || !mapped) {
-		SetError("upload Map failed");
-		return false;
-	}
-	auto *dst_base = static_cast<uint8_t *>(mapped);
+	const ptrdiff_t spitch = src_row_pitch;
+	const ptrdiff_t dpitch = dst_row_pitch;
+	constexpr uint16_t kOne = 0x3C00;
+	auto *dst_base = static_cast<uint8_t *>(g_upload_ptr);
 	for (int y = 0; y < height; ++y) {
 		auto *row = reinterpret_cast<uint16_t *>(dst_base + (size_t)y * g_row_pitch);
-		const uint8_t *src = src_bgra + (size_t)y * src_row_pitch;
+		const uint8_t *src = src_bgra + (ptrdiff_t)y * spitch;
 		for (int x = 0; x < width; ++x) {
-			const uint8_t b = src[x * 4 + 0], g = src[x * 4 + 1], r = src[x * 4 + 2];
-			row[x * 4 + 0] = g_lut8_to_half[r];
-			row[x * 4 + 1] = g_lut8_to_half[g];
-			row[x * 4 + 2] = g_lut8_to_half[b];
-			row[x * 4 + 3] = FloatToHalf(1.0f);
+			const uint8_t *px = src + x * 4;
+			row[x * 4 + 0] = g_lut8_to_half[px[2]];
+			row[x * 4 + 1] = g_lut8_to_half[px[1]];
+			row[x * 4 + 2] = g_lut8_to_half[px[0]];
+			row[x * 4 + 3] = kOne;
 		}
 	}
-	g_upload->Unmap(0, nullptr);
 
 	auto b1 = Barrier(g_color.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
 	g_cmd->ResourceBarrier(1, &b1);
@@ -761,13 +783,8 @@ bool process(const uint8_t *src_bgra, int src_row_pitch, uint8_t *dst_bgra, int 
 		return false;
 	}
 
-	mapped = nullptr;
-	if (FAILED(g_readback->Map(0, nullptr, &mapped)) || !mapped) {
-		SetError("readback Map failed");
-		return false;
-	}
+	auto *mapped = static_cast<uint8_t *>(g_readback_ptr);
 
-	// First successful frame: decide whether the runtime wrote BGRA or RGBA.
 	if (!g_channel_order_checked) {
 		double mae_rgba = 0, mae_bgra = 0;
 		const int samples = (std::min)(width * height, 4096);
@@ -775,11 +792,11 @@ bool process(const uint8_t *src_bgra, int src_row_pitch, uint8_t *dst_bgra, int 
 		int n = 0;
 		for (int i = 0; i < width * height; i += step) {
 			int y = i / width, x = i % width;
-			auto *row = reinterpret_cast<const uint16_t *>(static_cast<uint8_t *>(mapped) + (size_t)y * g_row_pitch);
+			auto *row = reinterpret_cast<const uint16_t *>(mapped + (size_t)y * g_row_pitch);
 			float or_ = HalfToFloat(row[x * 4 + 0]);
 			float og = HalfToFloat(row[x * 4 + 1]);
 			float ob = HalfToFloat(row[x * 4 + 2]);
-			const uint8_t *s = src_bgra + (size_t)y * src_row_pitch + x * 4;
+			const uint8_t *s = src_bgra + (ptrdiff_t)y * spitch + x * 4;
 			float sr = s[2] / 255.f, sg = s[1] / 255.f, sb = s[0] / 255.f;
 			mae_rgba += std::fabs(or_ - sr) + std::fabs(og - sg) + std::fabs(ob - sb);
 			mae_bgra += std::fabs(or_ - sb) + std::fabs(og - sg) + std::fabs(ob - sr);
@@ -790,8 +807,8 @@ bool process(const uint8_t *src_bgra, int src_row_pitch, uint8_t *dst_bgra, int 
 	}
 
 	for (int y = 0; y < height; ++y) {
-		auto *row = reinterpret_cast<const uint16_t *>(static_cast<uint8_t *>(mapped) + (size_t)y * g_row_pitch);
-		uint8_t *dst = dst_bgra + (size_t)y * dst_row_pitch;
+		auto *row = reinterpret_cast<const uint16_t *>(mapped + (size_t)y * g_row_pitch);
+		uint8_t *dst = dst_bgra + (ptrdiff_t)y * dpitch;
 		for (int x = 0; x < width; ++x) {
 			float c0 = HalfToFloat(row[x * 4 + 0]);
 			float c1 = HalfToFloat(row[x * 4 + 1]);
@@ -808,7 +825,6 @@ bool process(const uint8_t *src_bgra, int src_row_pitch, uint8_t *dst_bgra, int 
 			dst[x * 4 + 3] = 255;
 		}
 	}
-	g_readback->Unmap(0, nullptr);
 	return true;
 }
 
