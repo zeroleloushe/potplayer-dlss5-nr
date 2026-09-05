@@ -2,6 +2,7 @@
 // SVP RIFE path uses VapourSynth Filter — append this after SmoothFps.
 
 #include "nr_bridge.h"
+#include "settings_ini.h"
 
 #include "VapourSynth4.h"
 #include "VSHelper4.h"
@@ -115,13 +116,7 @@ const VSFrame *VS_CC getFrame(int n, int activationReason, void *instanceData, v
 	}
 
 	NrBridgeParams params{};
-	params.style = d->style;
-	params.preset = d->preset;
-	params.intensity = d->intensity;
-	params.tone = d->tone;
-	params.structure = d->structure;
-	params.skin = d->skin;
-	params.automask = d->automask;
+	NrSettingsApply(params, d->style, d->preset, d->intensity, d->tone, d->structure, d->skin, d->automask);
 	params.reset = (d->last_n >= 0 && n != d->last_n + 1) ? 1 : 0;
 	d->last_n = n;
 

@@ -22,10 +22,12 @@ jobs:
           copy build\DLSS5NR.dll dist\
           copy build\vsdlss5nr.dll dist\
           copy build\nvngx.dll_pot.dll dist\
+          copy build\nr-settings.exe dist\
           copy scripts\after_svp.avs dist\
           copy scripts\after_svp.vpy dist\
           copy tools\install-portable.ps1 dist\
           copy tools\install.cmd dist\
+          copy tools\DLSS5-NR-Settings.cmd dist\
           copy README.md dist\
       - uses: actions/upload-artifact@v4
         with:

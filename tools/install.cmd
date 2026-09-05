@@ -69,6 +69,12 @@ if exist "%~dp0after_svp.avs" copy /Y "%~dp0after_svp.avs" "%SCRIPTDEST%\" >nul
 if exist "%~dp0after_svp.vpy" copy /Y "%~dp0after_svp.vpy" "%SCRIPTDEST%\" >nul
 echo copied scripts -^> %SCRIPTDEST%
 
+if exist "%~dp0nr-settings.exe" (
+  copy /Y "%~dp0nr-settings.exe" "%POT%\" >nul
+  copy /Y "%~dp0DLSS5-NR-Settings.cmd" "%POT%\" >nul
+  echo copied nr-settings.exe -^> %POT%
+)
+
 set "RUNTIME=%LOCALAPPDATA%\potplayer-dlss5-nr\runtime"
 if not exist "%RUNTIME%" mkdir "%RUNTIME%"
 echo.

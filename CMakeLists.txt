@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 cmake_policy(SET CMP0091 NEW)
-project(potplayer-dlss5-nr VERSION 0.1.4 LANGUAGES CXX)
+project(potplayer-dlss5-nr VERSION 0.1.5 LANGUAGES CXX)
 
 if(POLICY CMP0169)
   cmake_policy(SET CMP0169 OLD)
@@ -56,5 +56,11 @@ target_link_libraries(vsdlss5nr PRIVATE d3d12 dxgi)
 target_compile_definitions(vsdlss5nr PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 set_target_properties(vsdlss5nr PROPERTIES PREFIX "" OUTPUT_NAME "vsdlss5nr" SUFFIX ".dll")
 
-install(TARGETS nr-caller-shim DLSS5NR vsdlss5nr RUNTIME DESTINATION bin)
+add_executable(nr-settings WIN32 src/nr_settings.cpp)
+target_include_directories(nr-settings PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(nr-settings PRIVATE comctl32 dwmapi)
+target_compile_definitions(nr-settings PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+set_target_properties(nr-settings PROPERTIES OUTPUT_NAME "nr-settings")
+
+install(TARGETS nr-caller-shim DLSS5NR vsdlss5nr nr-settings RUNTIME DESTINATION bin)
 install(FILES scripts/after_svp.avs scripts/after_svp.vpy tools/install-portable.ps1 DESTINATION .)

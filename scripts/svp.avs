@@ -1,23 +1,28 @@
 # SVPflow plugin for PotPlayer
 # Check https://www.svp-team.com/wiki/Manual:SVPflow for more details
 # This script was created by zub35 and 7sh3
-# Patched for DLSS 5 NR v0.1.4: NR runs BEFORE SVP (source fps, not 60fps)
+# potplayer-dlss5-nr: nr=0/1, smooth=0/1  (set in GPU-*.avs before import)
 
 Try{svp}Catch(err){svp=0} Try{alg}Catch(err){alg=0} Try{fim}Catch(err){fim=0}
 Try{bf}Catch(err){bf=0} Try{gpu}Catch(err){gpu=0} Try{fps}Catch(err){fps=60}
+Try{nr}Catch(err){nr=0}
+Try{smooth}Catch(err){smooth=1}
 
 SetMemoryMax(2700)
 global threads = (gpu==1 || gpu==2) ? 7 : 5
 
 LoadPlugin("svpflow1.dll")
 LoadPlugin("svpflow2.dll")
+nr==1 ? eval("""
 LoadPlugin("DLSS5NR.dll")
+SetFilterMTMode("DLSS5NR", 3)
+""") : eval("""
+""")
 
 SetFilterMTMode("DEFAULT_MT_MODE",2)
 SetFilterMTMode("SVSuper",1)
 SetFilterMTMode("SVAnalyse",1)
 SetFilterMTMode("potplayer_source",3)
-SetFilterMTMode("DLSS5NR", 3)
 
 potplayer_source()
 
@@ -194,15 +199,17 @@ smooth = SVSmoothFps(src, super, vectors, smoothfps_params, mt=threads)
 return dm==0 ? smooth : demo(src, smooth)
 }
 
-# NR on the SOURCE fps (24/25/30), then SVP interpolates the cleaned frames.
-# Doing NR after SVSmoothFps meant 60 GPU roundtrips/sec and tanked playback.
+# nr=1: DLSS 5 on SOURCE fps, then (optional) SVP interpolates
+nr==1 ? eval("""
 ConvertToRGB32()
 DLSS5NR(style=1, preset=0, intensity=1.0, tone=1.0, structure=1.5, skin=2.0, automask=true)
 ConvertToYV12()
+""") : eval("""
+""")
 
 fr = (up60==1) ? 60.5 : 30.5
 
-Framerate > fr ? eval("""
+smooth == 0 || Framerate > fr ? eval("""
 
 """) : z < 2305000 ? eval("""
 interpolate()

@@ -3,6 +3,7 @@
 // append DLSS5NR() after interpolation.
 
 #include "nr_bridge.h"
+#include "settings_ini.h"
 
 #include "avisynth.h"
 
@@ -109,13 +110,7 @@ public:
 		const int w = vi.width;
 		const int h = vi.height;
 		NrBridgeParams p{};
-		p.style = style;
-		p.preset = preset;
-		p.intensity = intensity;
-		p.tone = tone;
-		p.structure = structure;
-		p.skin = skin;
-		p.automask = automask;
+		NrSettingsApply(p, style, preset, intensity, tone, structure, skin, automask);
 		p.reset = (last_n >= 0 && n != last_n + 1) ? 1 : 0;
 		last_n = n;
 
