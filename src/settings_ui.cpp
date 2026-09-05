@@ -29,6 +29,7 @@ static HMODULE NrModule()
 	                   reinterpret_cast<LPCWSTR>(&NrSettingsCreate), &m);
 	return m;
 }
+static HWND g_style, g_preset, g_auto, g_ontop;
 static HWND g_tb[4], g_val[4];
 static HFONT g_font, g_fontBig;
 static HBRUSH g_bg;
