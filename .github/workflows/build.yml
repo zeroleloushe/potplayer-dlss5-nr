@@ -23,6 +23,7 @@ jobs:
           copy build\vsdlss5nr.dll dist\
           copy build\nvngx.dll_pot.dll dist\
           copy build\nr-settings.exe dist\
+          copy build\nr-potfilter.dll dist\
           copy scripts\after_svp.avs dist\
           copy scripts\after_svp.vpy dist\
           copy tools\install-portable.ps1 dist\

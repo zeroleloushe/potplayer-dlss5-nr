@@ -74,6 +74,11 @@ if exist "%~dp0nr-settings.exe" (
   copy /Y "%~dp0DLSS5-NR-Settings.cmd" "%POT%\" >nul
   echo copied nr-settings.exe -^> %POT%
 )
+if exist "%~dp0nr-potfilter.dll" (
+  copy /Y "%~dp0nr-potfilter.dll" "%POT%\" >nul
+  regsvr32 /s "%POT%\nr-potfilter.dll"
+  echo copied nr-potfilter.dll and registered HKCU
+)
 
 set "RUNTIME=%LOCALAPPDATA%\potplayer-dlss5-nr\runtime"
 if not exist "%RUNTIME%" mkdir "%RUNTIME%"
