@@ -94,12 +94,12 @@ static void LoadIntoUi()
 	}
 }
 
-static HWND AddStatic(HWND parent, const wchar_t *text, int x, int y, int w, int h, int id = 0)
+static HWND AddStatic(HWND parent, const wchar_t *text, int x, int y, int w, int hh, int id = 0)
 {
-	HWND h = CreateWindowExW(0, L"STATIC", text, WS_CHILD | WS_VISIBLE, x, y, w, h, parent, (HMENU)(INT_PTR)id,
-	                         GetModuleHandleW(nullptr), nullptr);
-	SendMessageW(h, WM_SETFONT, (WPARAM)g_font, TRUE);
-	return h;
+	HWND ctl = CreateWindowExW(0, L"STATIC", text, WS_CHILD | WS_VISIBLE, x, y, w, hh, parent, (HMENU)(INT_PTR)id,
+	                           GetModuleHandleW(nullptr), nullptr);
+	SendMessageW(ctl, WM_SETFONT, (WPARAM)g_font, TRUE);
+	return ctl;
 }
 
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
