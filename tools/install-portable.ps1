@@ -1,20 +1,40 @@
-# Drop the built DLLs into a portable PotPlayer + SVP tree.
-# Usage:
-#   powershell -NoProfile -ExecutionPolicy Bypass -File install-portable.ps1 -PotPlayerDir "D:\Portable\PotPlayer"
-#   install.cmd "D:\Portable\PotPlayer"
-
-param(
-    [Parameter(Mandatory = $true, Position = 0)][string]$PotPlayerDir,
-    [string]$AviSynthPlugins,
-    [string]$VapourSynthPlugins,
-    [string]$BinDir
-)
-
+# No param() block on purpose. PowerShell 5 treats parentheses in the
+# download folder name ("... (1)") as grouping and then dies with
+# AmbiguousParameterSet when binding named parameters via -File.
 $ErrorActionPreference = "Stop"
+
+$PotPlayerDir = $null
+$AviSynthPlugins = $null
+$VapourSynthPlugins = $null
+$BinDir = $null
+
+for ($i = 0; $i -lt $args.Count; $i++) {
+    $a = [string]$args[$i]
+    if ($a -eq "-PotPlayerDir" -and ($i + 1) -lt $args.Count) {
+        $i++; $PotPlayerDir = [string]$args[$i]; continue
+    }
+    if ($a -eq "-AviSynthPlugins" -and ($i + 1) -lt $args.Count) {
+        $i++; $AviSynthPlugins = [string]$args[$i]; continue
+    }
+    if ($a -eq "-VapourSynthPlugins" -and ($i + 1) -lt $args.Count) {
+        $i++; $VapourSynthPlugins = [string]$args[$i]; continue
+    }
+    if ($a -eq "-BinDir" -and ($i + 1) -lt $args.Count) {
+        $i++; $BinDir = [string]$args[$i]; continue
+    }
+    if ($a.StartsWith("-")) { throw "Unknown argument: $a" }
+    if (-not $PotPlayerDir) { $PotPlayerDir = $a; continue }
+    throw "Unexpected argument: $a"
+}
+
+if (-not $PotPlayerDir) {
+    Write-Host "Usage: install-portable.ps1 C:\Users\you\PotPlayer"
+    exit 1
+}
 
 function Find-First([string]$root, [string[]]$names) {
     foreach ($n in $names) {
-        $p = Get-ChildItem -Path $root -Recurse -Filter $n -ErrorAction SilentlyContinue |
+        $p = Get-ChildItem -LiteralPath $root -Recurse -Filter $n -ErrorAction SilentlyContinue |
             Where-Object { -not $_.PSIsContainer } |
             Select-Object -First 1
         if ($p) { return $p.DirectoryName }
@@ -23,16 +43,17 @@ function Find-First([string]$root, [string[]]$names) {
 }
 
 function Find-PluginDir([string]$startDir, [string]$dllName) {
+    if (-not (Test-Path -LiteralPath $startDir)) { return $null }
     $dllDir = Find-First $startDir @($dllName)
     if (-not $dllDir) { return $null }
-    foreach ($sub in @("plugins64+", "plugins64", "plugins")) {
+    foreach ($sub in @("plugins64+", "plugins64", "plugins+", "plugins", "vapoursynth64\plugins")) {
         $cand = Join-Path $dllDir $sub
-        if (Test-Path $cand) { return $cand }
+        if (Test-Path -LiteralPath $cand) { return $cand }
     }
     $parent = Split-Path $dllDir -Parent
-    foreach ($sub in @("plugins64+", "plugins64", "plugins")) {
+    foreach ($sub in @("plugins64+", "plugins64", "plugins+", "plugins", "vapoursynth64\plugins")) {
         $cand = Join-Path $parent $sub
-        if (Test-Path $cand) { return $cand }
+        if (Test-Path -LiteralPath $cand) { return $cand }
     }
     return $dllDir
 }
@@ -94,7 +115,7 @@ if ($AviSynthPlugins) {
     if (Copy-Built "DLSS5NR.dll" $AviSynthPlugins) { $copied = $true }
     Copy-Built "nvngx.dll_pot.dll" $AviSynthPlugins | Out-Null
 } else {
-    Write-Warning "AviSynth plugins folder not found. Re-run with -AviSynthPlugins `"D:\path\plugins64`""
+    Write-Warning "AviSynth plugins folder not found."
 }
 
 if ($VapourSynthPlugins) {
@@ -124,7 +145,7 @@ if (Test-Path -LiteralPath $nr) {
 
 Write-Host ""
 if (-not $copied) {
-    Write-Host "No plugin DLL was copied. Pass -AviSynthPlugins or -VapourSynthPlugins."
+    Write-Host "No plugin DLL was copied. Find plugins64 and copy DLSS5NR.dll there."
     exit 1
 }
 
