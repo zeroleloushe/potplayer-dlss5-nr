@@ -136,6 +136,21 @@ void SetError(const char *fmt, ...)
 	va_end(ap);
 	g_error = buf;
 	g_status = buf;
+	wchar_t dir[MAX_PATH]{};
+	if (GetEnvironmentVariableW(L"LOCALAPPDATA", dir, MAX_PATH)) {
+		wchar_t path[MAX_PATH]{};
+		swprintf(path, MAX_PATH, L"%s\\potplayer-dlss5-nr", dir);
+		CreateDirectoryW(path, nullptr);
+		swprintf(path, MAX_PATH, L"%s\\potplayer-dlss5-nr\\nr.log", dir);
+		FILE *f = nullptr;
+		if (_wfopen_s(&f, path, L"ab") == 0 && f) {
+			SYSTEMTIME st{};
+			GetLocalTime(&st);
+			fprintf(f, "%04d-%02d-%02d %02d:%02d:%02d %s\n", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute,
+			        st.wSecond, buf);
+			fclose(f);
+		}
+	}
 }
 
 void SetStatus(const char *fmt, ...)
@@ -246,7 +261,13 @@ bool ExecuteList()
 
 HMODULE TryLoad(const wchar_t *path)
 {
-	return path && path[0] ? LoadLibraryW(path) : nullptr;
+	if (!path || !path[0])
+		return nullptr;
+	__try {
+		return LoadLibraryW(path);
+	} __except (EXCEPTION_EXECUTE_HANDLER) {
+		return nullptr;
+	}
 }
 
 HMODULE LoadCoreFromDriverStore()

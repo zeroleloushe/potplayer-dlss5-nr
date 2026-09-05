@@ -62,9 +62,14 @@ void EnsureInit(int gpu, const char *runtime)
 		g_gpu = gpu;
 		g_runtime = runtime && runtime[0] ? Widen(runtime) : DefaultRuntimeDir();
 		g_shim_dir = DirOfSelf();
-		g_init_ok = nrbridge::init(g_gpu, g_runtime.c_str(), g_shim_dir.c_str());
-		if (!g_init_ok)
+		g_init_ok = nrbridge_seh_init(g_gpu, g_runtime.c_str(), g_shim_dir.c_str());
+		if (!g_init_ok) {
 			g_init_error = nrbridge::last_error();
+			if (g_init_error.empty() && nrbridge_seh_message()[0])
+				g_init_error = nrbridge_seh_message();
+			if (g_init_error.empty())
+				g_init_error = "NR init failed (see %LOCALAPPDATA%\\potplayer-dlss5-nr\\nr.log)";
+		}
 	});
 }
 
@@ -85,16 +90,19 @@ public:
 			env->ThrowError("DLSS5NR: convert the clip to RGB32 first (ConvertToRGB32).");
 		if (vi.width < 160 || vi.height < 90)
 			env->ThrowError("DLSS5NR: frame smaller than 160x90.");
-		EnsureInit(gpu, this->runtime.c_str());
+		// Do NOT touch D3D12/NGX here. Constructor runs while AviSynth builds the
+		// graph (and after Prefetch in broken scripts) — a crash becomes
+		// "Access Violation (svp.avs, line N)".
 	}
 
 	PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment *env) override
 	{
 		PVideoFrame src = child->GetFrame(n, env);
+		EnsureInit(gpu, runtime.c_str());
 		if (!g_init_ok) {
-			if (info)
-				env->MakeWritable(&src);
-			return src;
+			// Surface the reason once as an AviSynth error instead of a silent
+			// pass-through — yellow text beats Access Violation.
+			env->ThrowError("DLSS5NR init failed: %s", g_init_error.c_str());
 		}
 
 		PVideoFrame dst = env->NewVideoFrame(vi);
@@ -116,14 +124,13 @@ public:
 		const int spitch = src->GetPitch();
 		const int dpitch = dst->GetPitch();
 
-		// AviSynth RGB is stored bottom-up. Flip on the way in and out.
 		std::vector<uint8_t> in((size_t)w * h * 4), out((size_t)w * h * 4);
 		for (int y = 0; y < h; ++y) {
 			const uint8_t *row = sp + (size_t)(h - 1 - y) * spitch;
 			memcpy(in.data() + (size_t)y * w * 4, row, (size_t)w * 4);
 		}
 
-		const bool ok = nrbridge::process(in.data(), w * 4, out.data(), w * 4, w, h, p);
+		const bool ok = nrbridge_seh_process(in.data(), w * 4, out.data(), w * 4, w, h, p);
 		if (!ok) {
 			env->BitBlt(dp, dpitch, sp, spitch, vi.BytesFromPixels(w), h);
 			return dst;

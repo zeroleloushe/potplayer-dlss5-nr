@@ -39,3 +39,9 @@ const char *last_error();
 const char *status_text();
 
 } // namespace nrbridge
+
+// SEH wrappers (seh_wrap.cpp) — never let NVIDIA/D3D12 AV kill AviSynth.
+bool nrbridge_seh_init(int gpu_index, const wchar_t *runtime_dir, const wchar_t *shim_dir);
+bool nrbridge_seh_process(const uint8_t *src_bgra, int src_row_pitch, uint8_t *dst_bgra, int dst_row_pitch, int width,
+                         int height, const NrBridgeParams &params);
+const char *nrbridge_seh_message();
