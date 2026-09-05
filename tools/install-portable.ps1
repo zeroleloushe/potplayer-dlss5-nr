@@ -4,7 +4,7 @@
 #   install.cmd "D:\Portable\PotPlayer"
 
 param(
-    [Parameter(Mandatory = $true)][string]$PotPlayerDir,
+    [Parameter(Mandatory = $true, Position = 0)][string]$PotPlayerDir,
     [string]$AviSynthPlugins,
     [string]$VapourSynthPlugins,
     [string]$BinDir
