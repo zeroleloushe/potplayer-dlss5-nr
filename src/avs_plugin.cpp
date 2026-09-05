@@ -1,6 +1,7 @@
 // AviSynth+ plugin. Function: DLSS5NR(clip, ...)
-// Loaded by AviSynth Filter / PotPlayer's AviSynth path. SVP runs first;
-// append DLSS5NR() after interpolation.
+// GetFrame never waits on D3D12/NGX. A worker thread runs NR; the filter
+// returns the current frame immediately (passthrough or a 1–2 frame delayed
+// NR result). This keeps PotPlayer's audio clock from running away on seek.
 
 #include "nr_bridge.h"
 #include "settings_ini.h"
@@ -8,16 +9,20 @@
 #include "avisynth.h"
 
 #include <algorithm>
+#include <atomic>
+#include <condition_variable>
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 #include <windows.h>
 
 namespace {
 
 std::once_flag g_init_once;
-bool g_init_ok = false;
+std::atomic<bool> g_init_ok{false};
+std::atomic<bool> g_init_done{false};
 std::wstring g_runtime;
 std::wstring g_shim_dir;
 int g_gpu = 0;
@@ -39,8 +44,7 @@ std::wstring DefaultRuntimeDir()
 	wchar_t local[MAX_PATH]{};
 	if (!GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH))
 		return L".\\runtime";
-	std::wstring p = std::wstring(local) + L"\\potplayer-dlss5-nr\\runtime";
-	return p;
+	return std::wstring(local) + L"\\potplayer-dlss5-nr\\runtime";
 }
 
 std::wstring DirOfSelf()
@@ -71,7 +75,107 @@ void EnsureInit(int gpu, const char *runtime)
 			if (g_init_error.empty())
 				g_init_error = "NR init failed (see %LOCALAPPDATA%\\potplayer-dlss5-nr\\nr.log)";
 		}
+		g_init_done = true;
 	});
+}
+
+struct Job {
+	std::vector<uint8_t> bgra; // top-down packed BGRA, pitch = w*4
+	int w = 0, h = 0, n = -1;
+	NrBridgeParams p{};
+	bool valid = false;
+};
+
+std::mutex g_job_mu;
+std::condition_variable g_job_cv;
+Job g_job;
+std::atomic<bool> g_run{true};
+
+std::mutex g_out_mu;
+std::vector<uint8_t> g_out;
+int g_out_w = 0, g_out_h = 0, g_out_n = -999999;
+bool g_out_ok = false;
+std::atomic<int> g_live_n{-1};
+
+void WorkerLoop(int gpu, std::string runtime)
+{
+	EnsureInit(gpu, runtime.c_str());
+	Job local;
+	int last_proc = -2;
+	while (g_run) {
+		{
+			std::unique_lock<std::mutex> lk(g_job_mu);
+			g_job_cv.wait(lk, [] { return g_job.valid || !g_run.load(); });
+			if (!g_run)
+				break;
+			local.w = g_job.w;
+			local.h = g_job.h;
+			local.n = g_job.n;
+			local.p = g_job.p;
+			local.bgra.swap(g_job.bgra);
+			g_job.valid = false;
+		}
+		if (!g_init_ok || local.w < 160 || local.h < 90 || local.bgra.empty())
+			continue;
+		// Drop jobs that are already too old — don't burn CreateFeature on a seek leftover.
+		if (g_live_n.load() - local.n > 2)
+			continue;
+		if (last_proc >= 0 && local.n != last_proc + 1)
+			local.p.reset = 1;
+		last_proc = local.n;
+		std::vector<uint8_t> out(local.bgra.size());
+		const bool ok = nrbridge_seh_process(local.bgra.data(), local.w * 4, out.data(), local.w * 4, local.w, local.h,
+		                                    local.p);
+		if (!ok)
+			continue;
+		std::lock_guard<std::mutex> lk(g_out_mu);
+		g_out.swap(out);
+		g_out_w = local.w;
+		g_out_h = local.h;
+		g_out_n = local.n;
+		g_out_ok = true;
+	}
+}
+
+std::once_flag g_worker_once;
+
+void StartWorker(int gpu, const char *runtime)
+{
+	std::call_once(g_worker_once, [gpu, runtime]() {
+		std::string rt = runtime ? runtime : "";
+		std::thread([gpu, rt]() { WorkerLoop(gpu, rt); }).detach();
+	});
+}
+
+void SubmitJob(const uint8_t *sp, int spitch, int w, int h, int n, const NrBridgeParams &p)
+{
+	std::lock_guard<std::mutex> lk(g_job_mu);
+	g_job.bgra.resize((size_t)w * h * 4);
+	for (int y = 0; y < h; ++y) {
+		const uint8_t *row = sp + (size_t)(h - 1 - y) * (size_t)spitch;
+		memcpy(g_job.bgra.data() + (size_t)y * w * 4, row, (size_t)w * 4);
+	}
+	g_job.w = w;
+	g_job.h = h;
+	g_job.n = n;
+	g_job.p = p;
+	g_job.valid = true;
+	g_job_cv.notify_one();
+}
+
+bool BlitRecentNr(uint8_t *dp, int dpitch, int w, int h, int n)
+{
+	std::lock_guard<std::mutex> lk(g_out_mu);
+	if (!g_out_ok || g_out_w != w || g_out_h != h)
+		return false;
+	// More than 2 source frames behind = stale (would look like a freeze / desync).
+	if (n - g_out_n > 2 || g_out_n - n > 2)
+		return false;
+	for (int y = 0; y < h; ++y) {
+		uint8_t *row = dp + (size_t)(h - 1 - y) * (size_t)dpitch;
+		memcpy(row, g_out.data() + (size_t)y * w * 4, (size_t)w * 4);
+	}
+	return true;
 }
 
 class DLSS5NR : public GenericVideoFilter {
@@ -80,8 +184,6 @@ public:
 	float intensity, tone, structure, skin;
 	std::string runtime;
 	int last_n = -2;
-	int skip_left = 0;
-	bool pending_reset = false;
 
 	DLSS5NR(PClip child, int style, int preset, float intensity, float tone, float structure, float skin, bool automask,
 	        bool info, int gpu, const char *runtime, IScriptEnvironment *env)
@@ -93,71 +195,39 @@ public:
 			env->ThrowError("DLSS5NR: convert the clip to RGB32 first (ConvertToRGB32).");
 		if (vi.width < 160 || vi.height < 90)
 			env->ThrowError("DLSS5NR: frame smaller than 160x90.");
-		// Do NOT touch D3D12/NGX here. Constructor runs while AviSynth builds the
-		// graph (and after Prefetch in broken scripts) — a crash becomes
-		// "Access Violation (svp.avs, line N)".
+		StartWorker(gpu, this->runtime.c_str());
 	}
 
 	PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment *env) override
 	{
 		PVideoFrame src = child->GetFrame(n, env);
-
-		const bool jumped = (last_n >= 0 && n != last_n + 1);
-		if (jumped) {
-			// Seek / scrub: NR is 20–80ms and serialized. Prefetch would stall
-			// the video clock while audio keeps going. Pass through a few source
-			// frames so PotPlayer can resync, then resume NR with a history reset.
-			skip_left = 8;
-			pending_reset = true;
-		}
-		last_n = n;
-
 		PVideoFrame dst = env->NewVideoFrame(vi);
+		const int w = vi.width;
+		const int h = vi.height;
 		const uint8_t *sp = src->GetReadPtr();
 		uint8_t *dp = dst->GetWritePtr();
 		const int spitch = src->GetPitch();
 		const int dpitch = dst->GetPitch();
-		const int row_bytes = vi.BytesFromPixels(vi.width);
+		const int row_bytes = vi.BytesFromPixels(w);
 
-		if (skip_left > 0) {
-			skip_left--;
-			env->BitBlt(dp, dpitch, sp, spitch, row_bytes, vi.height);
-			return dst;
-		}
-
-		EnsureInit(gpu, runtime.c_str());
-		if (!g_init_ok) {
-			env->ThrowError("DLSS5NR init failed: %s", g_init_error.c_str());
-		}
-
-		const int w = vi.width;
-		const int h = vi.height;
 		NrBridgeParams p{};
 		NrSettingsApply(p, style, preset, intensity, tone, structure, skin, automask);
-		p.reset = pending_reset ? 1 : 0;
-		pending_reset = false;
+		p.reset = (last_n >= 0 && n != last_n + 1) ? 1 : 0;
+		last_n = n;
+		g_live_n = n;
 
-		LARGE_INTEGER freq{}, t0{}, t1{};
-		QueryPerformanceFrequency(&freq);
-		QueryPerformanceCounter(&t0);
-		const bool ok = nrbridge_seh_process(sp + (size_t)(h - 1) * (size_t)spitch, -spitch,
-		                                    dp + (size_t)(h - 1) * (size_t)dpitch, -dpitch, w, h, p);
-		QueryPerformanceCounter(&t1);
-		const double ms = freq.QuadPart ? (t1.QuadPart - t0.QuadPart) * 1000.0 / freq.QuadPart : 0;
-		if (ms > 80.0)
-			skip_left = 3;
+		SubmitJob(sp, spitch, w, h, n, p);
 
-		if (!ok) {
+		if (!BlitRecentNr(dp, dpitch, w, h, n))
 			env->BitBlt(dp, dpitch, sp, spitch, row_bytes, h);
-			return dst;
-		}
 		return dst;
 	}
 
 	int __stdcall SetCacheHints(int cachehints, int frame_range) override
 	{
 		(void)frame_range;
-		return cachehints == CACHE_GET_MTMODE ? MT_SERIALIZED : 0;
+		// GetFrame only memcpy's; D3D lives on the worker. Let Prefetch parallelize.
+		return cachehints == CACHE_GET_MTMODE ? MT_NICE_FILTER : 0;
 	}
 };
 
