@@ -1,0 +1,32 @@
+name: build
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Configure
+        run: cmake -S . -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Stage
+        run: |
+          mkdir dist
+          copy build\DLSS5NR.dll dist\
+          copy build\dlss5nr.dll dist\
+          copy build\nvngx.dll_pot.dll dist\
+          copy scripts\after_svp.avs dist\
+          copy scripts\after_svp.vpy dist\
+          copy tools\install-portable.ps1 dist\
+          copy README.md dist\
+      - uses: actions/upload-artifact@v4
+        with:
+          name: potplayer-dlss5-nr-windows-x64
+          path: dist

@@ -1,0 +1,9 @@
+build/
+out/
+dist/
+.vs/
+CMakeUserPresets.json
+*.user
+external/
+nvngx_dlssnr.dll
+_nvngx.dll
