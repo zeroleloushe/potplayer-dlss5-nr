@@ -80,6 +80,8 @@ public:
 	float intensity, tone, structure, skin;
 	std::string runtime;
 	int last_n = -2;
+	int skip_left = 0;
+	bool pending_reset = false;
 
 	DLSS5NR(PClip child, int style, int preset, float intensity, float tone, float structure, float skin, bool automask,
 	        bool info, int gpu, const char *runtime, IScriptEnvironment *env)
@@ -99,32 +101,54 @@ public:
 	PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment *env) override
 	{
 		PVideoFrame src = child->GetFrame(n, env);
-		EnsureInit(gpu, runtime.c_str());
-		if (!g_init_ok) {
-			// Surface the reason once as an AviSynth error instead of a silent
-			// pass-through — yellow text beats Access Violation.
-			env->ThrowError("DLSS5NR init failed: %s", g_init_error.c_str());
-		}
 
-		PVideoFrame dst = env->NewVideoFrame(vi);
-		const int w = vi.width;
-		const int h = vi.height;
-		NrBridgeParams p{};
-		NrSettingsApply(p, style, preset, intensity, tone, structure, skin, automask);
-		p.reset = (last_n >= 0 && n != last_n + 1) ? 1 : 0;
+		const bool jumped = (last_n >= 0 && n != last_n + 1);
+		if (jumped) {
+			// Seek / scrub: NR is 20–80ms and serialized. Prefetch would stall
+			// the video clock while audio keeps going. Pass through a few source
+			// frames so PotPlayer can resync, then resume NR with a history reset.
+			skip_left = 8;
+			pending_reset = true;
+		}
 		last_n = n;
 
+		PVideoFrame dst = env->NewVideoFrame(vi);
 		const uint8_t *sp = src->GetReadPtr();
 		uint8_t *dp = dst->GetWritePtr();
 		const int spitch = src->GetPitch();
 		const int dpitch = dst->GetPitch();
+		const int row_bytes = vi.BytesFromPixels(vi.width);
 
-		// AviSynth RGB is bottom-up. Pass the visual-top row with negative pitch
-		// so the bridge sees a top-down image without an extra CPU copy.
+		if (skip_left > 0) {
+			skip_left--;
+			env->BitBlt(dp, dpitch, sp, spitch, row_bytes, vi.height);
+			return dst;
+		}
+
+		EnsureInit(gpu, runtime.c_str());
+		if (!g_init_ok) {
+			env->ThrowError("DLSS5NR init failed: %s", g_init_error.c_str());
+		}
+
+		const int w = vi.width;
+		const int h = vi.height;
+		NrBridgeParams p{};
+		NrSettingsApply(p, style, preset, intensity, tone, structure, skin, automask);
+		p.reset = pending_reset ? 1 : 0;
+		pending_reset = false;
+
+		LARGE_INTEGER freq{}, t0{}, t1{};
+		QueryPerformanceFrequency(&freq);
+		QueryPerformanceCounter(&t0);
 		const bool ok = nrbridge_seh_process(sp + (size_t)(h - 1) * (size_t)spitch, -spitch,
 		                                    dp + (size_t)(h - 1) * (size_t)dpitch, -dpitch, w, h, p);
+		QueryPerformanceCounter(&t1);
+		const double ms = freq.QuadPart ? (t1.QuadPart - t0.QuadPart) * 1000.0 / freq.QuadPart : 0;
+		if (ms > 80.0)
+			skip_left = 3;
+
 		if (!ok) {
-			env->BitBlt(dp, dpitch, sp, spitch, vi.BytesFromPixels(w), h);
+			env->BitBlt(dp, dpitch, sp, spitch, row_bytes, h);
 			return dst;
 		}
 		return dst;

@@ -229,4 +229,8 @@ Sharpen(0.7)
 
 """)
 
+nr==1 ? eval("""
+Prefetch(2)
+""") : eval("""
 Prefetch(threads)
+""")

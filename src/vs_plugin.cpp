@@ -61,6 +61,8 @@ struct FilterData {
 	float intensity, tone, structure, skin;
 	std::string runtime;
 	int last_n = -2;
+	int skip_left = 0;
+	bool pending_reset = false;
 };
 
 void EnsureInit(int gpu, const std::string &runtime)
@@ -85,6 +87,18 @@ const VSFrame *VS_CC getFrame(int n, int activationReason, void *instanceData, v
 		return nullptr;
 
 	const VSFrame *src = vsapi->getFrameFilter(n, d->node, frameCtx);
+
+	const bool jumped = (d->last_n >= 0 && n != d->last_n + 1);
+	if (jumped) {
+		d->skip_left = 8;
+		d->pending_reset = true;
+	}
+	d->last_n = n;
+	if (d->skip_left > 0) {
+		d->skip_left--;
+		return src;
+	}
+
 	EnsureInit(d->gpu, d->runtime);
 	if (!g_init_ok)
 		return src;
@@ -117,8 +131,8 @@ const VSFrame *VS_CC getFrame(int n, int activationReason, void *instanceData, v
 
 	NrBridgeParams params{};
 	NrSettingsApply(params, d->style, d->preset, d->intensity, d->tone, d->structure, d->skin, d->automask);
-	params.reset = (d->last_n >= 0 && n != d->last_n + 1) ? 1 : 0;
-	d->last_n = n;
+	params.reset = d->pending_reset ? 1 : 0;
+	d->pending_reset = false;
 
 	const bool ok = nrbridge::process(bgra.data(), w * 4, out.data(), w * 4, w, h, params);
 	if (!ok) {
