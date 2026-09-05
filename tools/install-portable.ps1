@@ -69,7 +69,7 @@ if ($AviSynthPlugins) {
 }
 
 if ($VapourSynthPlugins) {
-    Copy-Built "dlss5nr.dll" $VapourSynthPlugins
+    Copy-Built "vsdlss5nr.dll" $VapourSynthPlugins
     Copy-Built "nvngx.dll_pot.dll" $VapourSynthPlugins
 }
 

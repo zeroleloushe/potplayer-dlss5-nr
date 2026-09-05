@@ -52,7 +52,7 @@ add_library(vsdlss5nr SHARED src/vs_plugin.cpp src/nr_bridge.cpp)
 target_include_directories(vsdlss5nr PRIVATE "${VS_INCLUDE}" "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(vsdlss5nr PRIVATE d3d12 dxgi)
 target_compile_definitions(vsdlss5nr PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-set_target_properties(vsdlss5nr PROPERTIES PREFIX "" OUTPUT_NAME "dlss5nr" SUFFIX ".dll")
+set_target_properties(vsdlss5nr PROPERTIES PREFIX "" OUTPUT_NAME "vsdlss5nr" SUFFIX ".dll")
 
 install(TARGETS nr-caller-shim DLSS5NR vsdlss5nr RUNTIME DESTINATION bin)
 install(FILES scripts/after_svp.avs scripts/after_svp.vpy tools/install-portable.ps1 DESTINATION .)

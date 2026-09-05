@@ -20,7 +20,7 @@ jobs:
         run: |
           mkdir dist
           copy build\DLSS5NR.dll dist\
-          copy build\dlss5nr.dll dist\
+          copy build\vsdlss5nr.dll dist\
           copy build\nvngx.dll_pot.dll dist\
           copy scripts\after_svp.avs dist\
           copy scripts\after_svp.vpy dist\

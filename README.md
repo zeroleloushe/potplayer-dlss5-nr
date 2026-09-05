@@ -37,7 +37,7 @@ Visual Studio 2022 C++ + CMake:
 build.bat
 ```
 
-Artifacts: `build/Release/DLSS5NR.dll`, `dlss5nr.dll`, `nvngx.dll_pot.dll`.
+Artifacts: `build/Release/DLSS5NR.dll`, `vsdlss5nr.dll`, `nvngx.dll_pot.dll`.
 
 The shim **must** keep the filename `nvngx.dll_pot.dll`. The NR runtime rejects callers whose path does not contain the substring `nvngx.dll` (`0xBAD00002`).
 
@@ -77,7 +77,7 @@ clip = core.dlss5.NR(clip, style=1, intensity=1.0, structure=1.5, skin=2.0, auto
 clip = core.resize.Bicubic(clip, format=vs.YUV420P8, matrix_s="709")
 ```
 
-Put `dlss5nr.dll` + `nvngx.dll_pot.dll` in the VapourSynth plugins folder. SVP → Utilities → Set environment variables for VapourSynth, then restart PotPlayer.
+Put `vsdlss5nr.dll` + `nvngx.dll_pot.dll` in the VapourSynth plugins folder. SVP → Utilities → Set environment variables for VapourSynth, then restart PotPlayer.
 
 ## Parameters
 
