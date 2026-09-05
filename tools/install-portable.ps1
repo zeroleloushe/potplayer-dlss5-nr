@@ -1,7 +1,7 @@
 # Drop the built DLLs into a portable PotPlayer + SVP tree.
 # Usage:
-#   powershell -ExecutionPolicy Bypass -File install-portable.ps1 -PotPlayerDir "D:\Portable\PotPlayer"
-#   powershell -ExecutionPolicy Bypass -File install-portable.ps1 -PotPlayerDir "D:\Portable\PotPlayer" -AviSynthPlugins "D:\Portable\AviSynth+\plugins64"
+#   powershell -NoProfile -ExecutionPolicy Bypass -File install-portable.ps1 -PotPlayerDir "D:\Portable\PotPlayer"
+#   install.cmd "D:\Portable\PotPlayer"
 
 param(
     [Parameter(Mandatory = $true)][string]$PotPlayerDir,
@@ -11,82 +11,126 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-if (-not $BinDir) {
-    $BinDir = Join-Path $PSScriptRoot "..\build\Release"
-    if (-not (Test-Path $BinDir)) { $BinDir = Join-Path $PSScriptRoot "..\build" }
-}
 
-function Find-First($root, $names) {
+function Find-First([string]$root, [string[]]$names) {
     foreach ($n in $names) {
-        $p = Get-ChildItem -Path $root -Recurse -Filter $n -ErrorAction SilentlyContinue | Select-Object -First 1
+        $p = Get-ChildItem -Path $root -Recurse -Filter $n -ErrorAction SilentlyContinue |
+            Where-Object { -not $_.PSIsContainer } |
+            Select-Object -First 1
         if ($p) { return $p.DirectoryName }
     }
     return $null
 }
 
-if (-not (Test-Path $PotPlayerDir)) { throw "PotPlayerDir not found: $PotPlayerDir" }
+function Find-PluginDir([string]$startDir, [string]$dllName) {
+    $dllDir = Find-First $startDir @($dllName)
+    if (-not $dllDir) { return $null }
+    foreach ($sub in @("plugins64+", "plugins64", "plugins")) {
+        $cand = Join-Path $dllDir $sub
+        if (Test-Path $cand) { return $cand }
+    }
+    $parent = Split-Path $dllDir -Parent
+    foreach ($sub in @("plugins64+", "plugins64", "plugins")) {
+        $cand = Join-Path $parent $sub
+        if (Test-Path $cand) { return $cand }
+    }
+    return $dllDir
+}
+
+if (-not (Test-Path -LiteralPath $PotPlayerDir)) {
+    throw "PotPlayerDir not found: $PotPlayerDir"
+}
+
+if (-not $BinDir) {
+    if (Test-Path -LiteralPath (Join-Path $PSScriptRoot "DLSS5NR.dll")) {
+        $BinDir = $PSScriptRoot
+    } elseif (Test-Path -LiteralPath (Join-Path $PSScriptRoot "..\build\Release\DLSS5NR.dll")) {
+        $BinDir = Join-Path $PSScriptRoot "..\build\Release"
+    } elseif (Test-Path -LiteralPath (Join-Path $PSScriptRoot "..\build\DLSS5NR.dll")) {
+        $BinDir = Join-Path $PSScriptRoot "..\build"
+    } else {
+        $BinDir = $PSScriptRoot
+    }
+}
+
+$searchRoots = @($PotPlayerDir)
+$parent = Split-Path -LiteralPath $PotPlayerDir -Parent
+if ($parent) { $searchRoots += $parent }
 
 if (-not $AviSynthPlugins) {
-    $AviSynthPlugins = Find-First $PotPlayerDir @("AviSynth.dll", "avisynth.dll")
-    if ($AviSynthPlugins) {
-        $cand = Join-Path $AviSynthPlugins "plugins64"
-        if (Test-Path $cand) { $AviSynthPlugins = $cand }
-        else {
-            $cand = Join-Path $AviSynthPlugins "plugins"
-            if (Test-Path $cand) { $AviSynthPlugins = $cand }
-        }
+    foreach ($root in $searchRoots) {
+        $AviSynthPlugins = Find-PluginDir $root "AviSynth.dll"
+        if (-not $AviSynthPlugins) { $AviSynthPlugins = Find-PluginDir $root "avisynth.dll" }
+        if ($AviSynthPlugins) { break }
     }
 }
 
 if (-not $VapourSynthPlugins) {
-    $vs = Find-First $PotPlayerDir @("vapoursynth.dll", "VSScript.dll")
-    if ($vs) {
-        $cand = Join-Path $vs "vapoursynth64\plugins"
-        if (Test-Path $cand) { $VapourSynthPlugins = $cand }
-        else {
-            $cand = Join-Path $vs "plugins"
-            if (Test-Path $cand) { $VapourSynthPlugins = $cand }
-        }
+    foreach ($root in $searchRoots) {
+        $VapourSynthPlugins = Find-PluginDir $root "vapoursynth.dll"
+        if (-not $VapourSynthPlugins) { $VapourSynthPlugins = Find-PluginDir $root "VSScript.dll" }
+        if ($VapourSynthPlugins) { break }
     }
 }
 
 $runtime = Join-Path $env:LOCALAPPDATA "potplayer-dlss5-nr\runtime"
 New-Item -ItemType Directory -Force -Path $runtime | Out-Null
 
-function Copy-Built($name, $dest) {
+function Copy-Built([string]$name, [string]$dest) {
     $src = Join-Path $BinDir $name
-    if (-not (Test-Path $src)) { Write-Warning "missing $src — build the project first"; return }
+    if (-not (Test-Path -LiteralPath $src)) {
+        Write-Warning "missing $src"
+        return $false
+    }
     New-Item -ItemType Directory -Force -Path $dest | Out-Null
-    Copy-Item $src $dest -Force
+    Copy-Item -LiteralPath $src -Destination $dest -Force
     Write-Host "copied $name -> $dest"
+    return $true
 }
 
+$copied = $false
+
 if ($AviSynthPlugins) {
-    Copy-Built "DLSS5NR.dll" $AviSynthPlugins
-    Copy-Built "nvngx.dll_pot.dll" $AviSynthPlugins
+    if (Copy-Built "DLSS5NR.dll" $AviSynthPlugins) { $copied = $true }
+    Copy-Built "nvngx.dll_pot.dll" $AviSynthPlugins | Out-Null
 } else {
-    Write-Warning "AviSynth plugins folder not found. Pass -AviSynthPlugins."
+    Write-Warning "AviSynth plugins folder not found. Re-run with -AviSynthPlugins `"D:\path\plugins64`""
 }
 
 if ($VapourSynthPlugins) {
-    Copy-Built "vsdlss5nr.dll" $VapourSynthPlugins
-    Copy-Built "nvngx.dll_pot.dll" $VapourSynthPlugins
+    if (Copy-Built "vsdlss5nr.dll" $VapourSynthPlugins) { $copied = $true }
+    Copy-Built "nvngx.dll_pot.dll" $VapourSynthPlugins | Out-Null
+}
+
+$scriptDest = Join-Path $PotPlayerDir "dlss5-nr"
+New-Item -ItemType Directory -Force -Path $scriptDest | Out-Null
+foreach ($f in @("after_svp.avs", "after_svp.vpy")) {
+    $src = Join-Path $PSScriptRoot $f
+    if (Test-Path -LiteralPath $src) {
+        Copy-Item -LiteralPath $src -Destination $scriptDest -Force
+        Write-Host "copied $f -> $scriptDest"
+    }
 }
 
 $nr = Join-Path $runtime "nvngx_dlssnr.dll"
 Write-Host ""
 Write-Host "Runtime folder: $runtime"
-if (Test-Path $nr) {
+if (Test-Path -LiteralPath $nr) {
     Write-Host "nvngx_dlssnr.dll is already there."
 } else {
-    Write-Host "PUT nvngx_dlssnr.dll HERE (copy from a game that ships DLSS 5 NR, e.g. NBA 2K27)."
-    Write-Host "This repo never ships NVIDIA's file."
+    Write-Host "PUT nvngx_dlssnr.dll HERE (copy from a game that ships DLSS 5 NR)."
+    Write-Host "This repo never ships NVIDIA files."
 }
 
 Write-Host ""
+if (-not $copied) {
+    Write-Host "No plugin DLL was copied. Pass -AviSynthPlugins or -VapourSynthPlugins."
+    exit 1
+}
+
 Write-Host "Next:"
-Write-Host "  1. PotPlayer renderer = Built-in Direct3D 11 (or madVR). Turn OFF D3D11 GPU Super Resolution — that is VSR, not DLSS 5."
+Write-Host "  1. PotPlayer renderer = Built-in Direct3D 11 or madVR. Turn OFF D3D11 GPU Super Resolution (that is VSR, not DLSS 5)."
 Write-Host "  2. Keep your SVP AviSynth / VapourSynth Filter as it is."
-Write-Host "  3. Append the line from scripts/after_svp.avs (or .vpy) AFTER SVSmoothFps."
-Write-Host "     SVP 4: tray -> All settings -> search 'extra' / profile additional script."
-Write-Host "  4. Play a 1080p file. Seek should not crash. If the picture is unchanged, NR failed open — check last_error via info=true."
+Write-Host "  3. Append the two lines from after_svp.avs AFTER SVSmoothFps."
+Write-Host "     SVP 4 tray -> All settings -> search extra / profile additional script."
+Write-Host "  4. Play a 1080p file. If the picture is unchanged, the runtime DLL is missing or the GPU was rejected."

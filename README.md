@@ -43,8 +43,14 @@ The shim **must** keep the filename `nvngx.dll_pot.dll`. The NR runtime rejects 
 
 ## Install into a portable pack
 
+```bat
+install.cmd "C:\Users\you\PotPlayer"
+```
+
+or:
+
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools\install-portable.ps1 -PotPlayerDir "D:\YourPortable\PotPlayer"
+powershell -NoProfile -ExecutionPolicy Bypass -File install-portable.ps1 -PotPlayerDir "C:\Users\you\PotPlayer"
 ```
 
 The script finds AviSynth `plugins64` / VapourSynth `plugins` under that tree and copies the DLLs. Then put `nvngx_dlssnr.dll` in the runtime folder it prints.

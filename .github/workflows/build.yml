@@ -25,6 +25,7 @@ jobs:
           copy scripts\after_svp.avs dist\
           copy scripts\after_svp.vpy dist\
           copy tools\install-portable.ps1 dist\
+          copy tools\install.cmd dist\
           copy README.md dist\
       - uses: actions/upload-artifact@v4
         with:
