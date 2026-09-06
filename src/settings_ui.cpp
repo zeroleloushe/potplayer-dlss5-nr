@@ -1,7 +1,7 @@
 ﻿#include "settings_ui.h"
+#include "dark_ui.h"
 #include "settings_ini.h"
 
-#include <commctrl.h>
 #include <dwmapi.h>
 #include <cstdio>
 #include <string>
@@ -22,17 +22,8 @@ enum {
 	IDC_RESET = 140
 };
 
-static HMODULE NrModule()
-{
-	HMODULE m = nullptr;
-	GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-	                   reinterpret_cast<LPCWSTR>(&NrSettingsCreate), &m);
-	return m;
-}
 static HWND g_style, g_preset, g_auto, g_ontop;
 static HWND g_tb[4], g_val[4];
-static HFONT g_font, g_fontBig;
-static HBRUSH g_bg;
 static NrUiSettings g_s;
 static bool g_child;
 
@@ -84,79 +75,49 @@ static void LoadIntoUi()
 	}
 }
 
-static HWND AddStatic(HWND parent, const wchar_t *text, int x, int y, int w, int hh, int id = 0)
-{
-	HWND ctl = CreateWindowExW(0, L"STATIC", text, WS_CHILD | WS_VISIBLE, x, y, w, hh, parent, (HMENU)(INT_PTR)id,
-	                           NrModule(), nullptr);
-	SendMessageW(ctl, WM_SETFONT, (WPARAM)g_font, TRUE);
-	return ctl;
-}
-
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg) {
 	case WM_CREATE: {
 		g_ontop = nullptr;
-		g_bg = CreateSolidBrush(RGB(18, 18, 20));
-		g_font = CreateFontW(-15, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
-		g_fontBig = CreateFontW(-20, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0,
-		                       L"Segoe UI");
-		HWND title = AddStatic(hwnd, L"DLSS 5 Neural Rendering", 20, 16, 400, 28);
-		SendMessageW(title, WM_SETFONT, (WPARAM)g_fontBig, TRUE);
-		AddStatic(hwnd, L"Крутится на лету, ролик перезапускать не нужно.", 20, 46, 400, 20);
+		DuiLabel(hwnd, L"DLSS 5 Neural Rendering", 24, 18, 420, 28, 20, FW_SEMIBOLD);
+		DuiLabel(hwnd, L"Крутится на лету, ролик перезапускать не нужно.", 24, 48, 420, 20, 14, FW_NORMAL, DuiMuted());
 
-		AddStatic(hwnd, L"Стиль", 20, 80, 120, 20);
-		g_style = CreateWindowExW(0, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_TABSTOP, 160, 76,
-		                          250, 120, hwnd, (HMENU)IDC_STYLE, NrModule(), nullptr);
-		SendMessageW(g_style, WM_SETFONT, (WPARAM)g_font, TRUE);
+		DuiLabel(hwnd, L"Стиль", 24, 88, 90, 22, 15, FW_NORMAL, DuiMuted());
+		g_style = DuiCombo(hwnd, IDC_STYLE, 160, 82, 270, 32);
 		SendMessageW(g_style, CB_ADDSTRING, 0, (LPARAM)L"0  Default");
 		SendMessageW(g_style, CB_ADDSTRING, 0, (LPARAM)L"1  Natural");
 		SendMessageW(g_style, CB_ADDSTRING, 0, (LPARAM)L"2  Cinematic");
 
-		AddStatic(hwnd, L"Пресет", 20, 114, 120, 20);
-		g_preset = CreateWindowExW(0, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_TABSTOP, 160, 110,
-		                           250, 140, hwnd, (HMENU)IDC_PRESET, NrModule(), nullptr);
-		SendMessageW(g_preset, WM_SETFONT, (WPARAM)g_font, TRUE);
+		DuiLabel(hwnd, L"Пресет", 24, 128, 90, 22, 15, FW_NORMAL, DuiMuted());
+		g_preset = DuiCombo(hwnd, IDC_PRESET, 160, 122, 270, 32);
 		SendMessageW(g_preset, CB_ADDSTRING, 0, (LPARAM)L"0");
 		SendMessageW(g_preset, CB_ADDSTRING, 0, (LPARAM)L"1");
 		SendMessageW(g_preset, CB_ADDSTRING, 0, (LPARAM)L"2");
 		SendMessageW(g_preset, CB_ADDSTRING, 0, (LPARAM)L"3");
 
-		int y = 160;
+		int y = 174;
 		for (int i = 0; i < 4; ++i) {
-			AddStatic(hwnd, kSliderNames[i], 20, y, 260, 20);
-			g_val[i] = AddStatic(hwnd, L"1.00", 330, y, 80, 20, IDC_INTENSITY_V + i);
-			g_tb[i] = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS | WS_TABSTOP, 20,
-			                          y + 22, 390, 36, hwnd, (HMENU)(INT_PTR)(IDC_INTENSITY + i), NrModule(), nullptr);
-			SendMessageW(g_tb[i], TBM_SETRANGEMIN, FALSE, 0);
-			SendMessageW(g_tb[i], TBM_SETRANGEMAX, FALSE, 200);
-			SendMessageW(g_tb[i], TBM_SETTICFREQ, 25, 0);
-			y += 64;
+			DuiLabel(hwnd, kSliderNames[i], 24, y, 280, 20);
+			g_val[i] = DuiLabel(hwnd, L"1.00", 360, y, 70, 20, 15, FW_SEMIBOLD, DuiAccent());
+			g_tb[i] = DuiSlider(hwnd, IDC_INTENSITY + i, 16, y + 22, 412, 28);
+			y += 72;
 		}
 
-		g_auto = CreateWindowExW(0, L"BUTTON", L"Автомаска (кожа)",
-		                         WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 20, y, 220, 24, hwnd,
-		                         (HMENU)IDC_AUTOMASK, NrModule(), nullptr);
-		SendMessageW(g_auto, WM_SETFONT, (WPARAM)g_font, TRUE);
+		g_auto = DuiCheck(hwnd, IDC_AUTOMASK, L"Автомаска (кожа)", 24, y + 4, 220, 26);
+		if (!g_child)
+			g_ontop = DuiCheck(hwnd, IDC_ONTOP, L"Поверх окон", 260, y + 4, 180, 26);
 
-		if (!g_child) {
-			g_ontop = CreateWindowExW(0, L"BUTTON", L"Поверх окон",
-			                          WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 250, y, 160, 24, hwnd,
-			                          (HMENU)IDC_ONTOP, NrModule(), nullptr);
-			SendMessageW(g_ontop, WM_SETFONT, (WPARAM)g_font, TRUE);
-			SendMessageW(g_ontop, BM_SETCHECK, BST_CHECKED, 0);
-		}
-
-		HWND reset = CreateWindowExW(0, L"BUTTON", L"Сброс", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP, 20,
-		                             y + 40, 120, 32, hwnd, (HMENU)IDC_RESET, NrModule(), nullptr);
-		SendMessageW(reset, WM_SETFONT, (WPARAM)g_font, TRUE);
+		DuiButton(hwnd, IDC_RESET, L"Сброс", 24, y + 44, 140, 36, false);
 		std::wstring hint = L"INI: " + NrSettingsIniPath();
-		AddStatic(hwnd, hint.c_str(), 20, y + 84, 400, 36);
+		DuiLabel(hwnd, hint.c_str(), 24, y + 92, 420, 36, 12, FW_NORMAL, DuiMuted());
 
 		g_s = NrSettingsLoad();
 		if (!g_s.loaded)
 			g_s = NrUiSettings{};
 		LoadIntoUi();
+		if (g_ontop)
+			SendMessageW(g_ontop, BM_SETCHECK, BST_CHECKED, 0);
 		Save();
 		return 0;
 	}
@@ -193,35 +154,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 			g_s = NrUiSettings{};
 			g_s.loaded = true;
 			LoadIntoUi();
+			if (g_ontop)
+				SendMessageW(g_ontop, BM_SETCHECK, BST_CHECKED, 0);
 			Save();
 		}
 		return 0;
 	}
 	case WM_CTLCOLORSTATIC: {
-		HDC hdc = (HDC)wParam;
-		SetTextColor(hdc, RGB(245, 245, 247));
-		SetBkColor(hdc, RGB(18, 18, 20));
-		return (LRESULT)g_bg;
+		COLORREF extra = (COLORREF)GetWindowLongPtrW((HWND)lParam, GWLP_USERDATA);
+		return DuiColorStatic(wParam, extra);
 	}
-	case WM_ERASEBKGND: {
-		RECT rc;
-		GetClientRect(hwnd, &rc);
-		FillRect((HDC)wParam, &rc, g_bg);
+	case WM_ERASEBKGND:
+		DuiPaintBackground((HDC)wParam, hwnd);
 		return 1;
-	}
 	case WM_DESTROY:
-		if (g_bg) {
-			DeleteObject(g_bg);
-			g_bg = nullptr;
-		}
-		if (g_font) {
-			DeleteObject(g_font);
-			g_font = nullptr;
-		}
-		if (g_fontBig) {
-			DeleteObject(g_fontBig);
-			g_fontBig = nullptr;
-		}
 		if (!g_child)
 			PostQuitMessage(0);
 		return 0;
@@ -229,13 +175,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 	return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
-SIZE NrSettingsIdealSize() { return SIZE{450, 560}; }
+SIZE NrSettingsIdealSize() { return SIZE{470, 620}; }
 
 HWND NrSettingsCreate(HWND parent, const RECT *rc, bool as_child)
 {
 	SetProcessDPIAware();
-	INITCOMMONCONTROLSEX icc{sizeof(icc), ICC_BAR_CLASSES | ICC_STANDARD_CLASSES};
-	InitCommonControlsEx(&icc);
+	DuiInit();
 	g_child = as_child;
 
 	static bool registered = false;
@@ -243,33 +188,32 @@ HWND NrSettingsCreate(HWND parent, const RECT *rc, bool as_child)
 		WNDCLASSEXW wc{};
 		wc.cbSize = sizeof(wc);
 		wc.lpfnWndProc = WndProc;
-		wc.hInstance = NrModule();
+		wc.hInstance = DuiModule();
 		wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-		wc.hbrBackground = CreateSolidBrush(RGB(18, 18, 20));
+		wc.hbrBackground = DuiBgBrush();
 		wc.lpszClassName = L"PotPlayerDlss5NrSettings";
 		RegisterClassExW(&wc);
 		registered = true;
 	}
 
 	DWORD style = as_child ? (WS_CHILD | WS_VISIBLE) : (WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX);
-	int x = CW_USEDEFAULT, y = CW_USEDEFAULT, w = 450, h = 560;
+	int x = CW_USEDEFAULT, y = CW_USEDEFAULT, w = 470, h = 620;
 	if (rc) {
 		x = rc->left;
 		y = rc->top;
 		w = rc->right - rc->left;
 		h = rc->bottom - rc->top;
 	} else if (!as_child) {
-		RECT wr{0, 0, 450, 560};
+		RECT wr{0, 0, 470, 620};
 		AdjustWindowRect(&wr, style, FALSE);
 		w = wr.right - wr.left;
 		h = wr.bottom - wr.top;
 	}
 
 	HWND hwnd = CreateWindowExW(0, L"PotPlayerDlss5NrSettings", L"DLSS 5 NR - настройки", style, x, y, w, h, parent,
-	                            nullptr, NrModule(), nullptr);
+	                            nullptr, DuiModule(), nullptr);
 	if (!as_child) {
-		BOOL dark = TRUE;
-		DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark));
+		DuiDarkTitlebar(hwnd);
 		SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 	}
 	return hwnd;

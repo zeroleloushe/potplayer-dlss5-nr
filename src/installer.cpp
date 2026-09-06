@@ -7,6 +7,7 @@
 #include <shobjidl.h>
 
 #include "setup_res.h"
+#include "dark_ui.h"
 
 #include <cstring>
 #include <string>
@@ -30,8 +31,6 @@ enum {
 };
 
 static HWND g_path, g_log, g_reg, g_svp, g_profiles;
-static HFONT g_font;
-static HBRUSH g_bg;
 
 static std::wstring Join(const std::wstring &a, const wchar_t *b)
 {
@@ -358,54 +357,29 @@ static void DoInstall(HWND hwnd)
 	EnableWindow(GetDlgItem(hwnd, IDC_INSTALL), TRUE);
 }
 
-static HWND AddTxt(HWND parent, const wchar_t *t, int x, int y, int w, int h, int id = 0)
-{
-	HWND c = CreateWindowExW(0, L"STATIC", t, WS_CHILD | WS_VISIBLE, x, y, w, h, parent, (HMENU)(INT_PTR)id,
-	                         GetModuleHandleW(nullptr), nullptr);
-	SendMessageW(c, WM_SETFONT, (WPARAM)g_font, TRUE);
-	return c;
-}
-
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg) {
 	case WM_CREATE: {
-		g_bg = CreateSolidBrush(RGB(18, 18, 20));
-		g_font = CreateFontW(-15, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
-		HFONT big = CreateFontW(-20, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0,
-		                        L"Segoe UI");
-		HWND title = AddTxt(hwnd, L"DLSS 5 NR для PotPlayer", 20, 16, 500, 28);
-		SendMessageW(title, WM_SETFONT, (WPARAM)big, TRUE);
-		AddTxt(hwnd, L"Укажи папку портативного PotPlayer (где PotPlayerMini64.exe).", 20, 48, 520, 22);
-		AddTxt(hwnd, L"Папка", 20, 84, 70, 22);
+		DuiLabel(hwnd, L"DLSS 5 Neural Rendering", 24, 16, 520, 28, 20, FW_SEMIBOLD);
+		DuiLabel(hwnd, L"для PotPlayer + SVP", 24, 46, 520, 22, 16, FW_NORMAL, DuiAccent());
+		DuiLabel(hwnd, L"Укажи папку портативного PotPlayer (где PotPlayerMini64.exe).", 24, 78, 520, 20, 14,
+		         FW_NORMAL, DuiMuted());
+		DuiLabel(hwnd, L"Папка", 24, 114, 70, 22, 15, FW_NORMAL, DuiMuted());
 		g_path = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | WS_TABSTOP, 90,
-		                         80, 330, 26, hwnd, (HMENU)IDC_PATH, GetModuleHandleW(nullptr), nullptr);
-		SendMessageW(g_path, WM_SETFONT, (WPARAM)g_font, TRUE);
-		HWND br = CreateWindowExW(0, L"BUTTON", L"Обзор…", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP, 430, 79,
-		                          90, 28, hwnd, (HMENU)IDC_BROWSE, GetModuleHandleW(nullptr), nullptr);
-		SendMessageW(br, WM_SETFONT, (WPARAM)g_font, TRUE);
-		g_reg = CreateWindowExW(0, L"BUTTON", L"Зарегистрировать настройки в Менеджере фильтров",
-		                        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 20, 118, 500, 24, hwnd,
-		                        (HMENU)IDC_REG, GetModuleHandleW(nullptr), nullptr);
-		g_profiles = CreateWindowExW(0, L"BUTTON", L"Скопировать профили GPU-3-High-NR / GPU-NR",
-		                             WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 20, 144, 500, 24, hwnd,
-		                             (HMENU)IDC_PROFILES, GetModuleHandleW(nullptr), nullptr);
-		g_svp = CreateWindowExW(0, L"BUTTON", L"Заменить svp.avs (старый уйдёт в .bak)",
-		                        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 20, 170, 500, 24, hwnd,
-		                        (HMENU)IDC_SVP, GetModuleHandleW(nullptr), nullptr);
-		SendMessageW(g_reg, WM_SETFONT, (WPARAM)g_font, TRUE);
-		SendMessageW(g_profiles, WM_SETFONT, (WPARAM)g_font, TRUE);
-		SendMessageW(g_svp, WM_SETFONT, (WPARAM)g_font, TRUE);
+		                         110, 330, 30, hwnd, (HMENU)IDC_PATH, GetModuleHandleW(nullptr), nullptr);
+		SendMessageW(g_path, WM_SETFONT, (WPARAM)DuiFont(13), TRUE);
+		DuiButton(hwnd, IDC_BROWSE, L"Обзор…", 432, 109, 100, 32, false);
+		g_reg = DuiCheck(hwnd, IDC_REG, L"Зарегистрировать настройки в Менеджере фильтров", 24, 156, 510, 26);
+		g_profiles = DuiCheck(hwnd, IDC_PROFILES, L"Скопировать профили GPU-3-High-NR / GPU-NR", 24, 188, 510, 26);
+		g_svp = DuiCheck(hwnd, IDC_SVP, L"Заменить svp.avs (старый уйдёт в .bak)", 24, 220, 510, 26);
 		SendMessageW(g_reg, BM_SETCHECK, BST_CHECKED, 0);
 		SendMessageW(g_profiles, BM_SETCHECK, BST_CHECKED, 0);
-		HWND go = CreateWindowExW(0, L"BUTTON", L"Установить",
-		                          WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP, 20, 206, 160, 36, hwnd,
-		                          (HMENU)IDC_INSTALL, GetModuleHandleW(nullptr), nullptr);
-		SendMessageW(go, WM_SETFONT, (WPARAM)g_font, TRUE);
+		DuiButton(hwnd, IDC_INSTALL, L"Установить", 24, 260, 200, 42, true);
 		g_log = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
-		                        WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, 20,
-		                        256, 500, 200, hwnd, (HMENU)IDC_LOG, GetModuleHandleW(nullptr), nullptr);
-		SendMessageW(g_log, WM_SETFONT, (WPARAM)g_font, TRUE);
+		                        WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, 24,
+		                        318, 508, 170, hwnd, (HMENU)IDC_LOG, GetModuleHandleW(nullptr), nullptr);
+		SendMessageW(g_log, WM_SETFONT, (WPARAM)DuiFont(13), TRUE);
 		SetWindowTextW(g_path, GuessPotPlayer().c_str());
 		Log(L"NVIDIA nvngx_dlssnr.dll установщик не кладёт — его надо взять из игры.");
 		return 0;
@@ -420,17 +394,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 		}
 		return 0;
 	case WM_CTLCOLORSTATIC: {
+		COLORREF extra = (COLORREF)GetWindowLongPtrW((HWND)lParam, GWLP_USERDATA);
+		return DuiColorStatic(wParam, extra);
+	}
+	case WM_CTLCOLOREDIT: {
 		HDC hdc = (HDC)wParam;
-		SetTextColor(hdc, RGB(245, 245, 247));
-		SetBkColor(hdc, RGB(18, 18, 20));
-		return (LRESULT)g_bg;
+		SetTextColor(hdc, DuiFg());
+		SetBkColor(hdc, RGB(10, 10, 12));
+		static HBRUSH editBg = CreateSolidBrush(RGB(10, 10, 12));
+		return (LRESULT)editBg;
 	}
-	case WM_ERASEBKGND: {
-		RECT rc;
-		GetClientRect(hwnd, &rc);
-		FillRect((HDC)wParam, &rc, g_bg);
+	case WM_ERASEBKGND:
+		DuiPaintBackground((HDC)wParam, hwnd);
 		return 1;
-	}
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		return 0;
@@ -442,25 +418,23 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show)
 {
 	SetProcessDPIAware();
 	CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-	INITCOMMONCONTROLSEX icc{sizeof(icc), ICC_STANDARD_CLASSES};
-	InitCommonControlsEx(&icc);
+	DuiInit();
 
 	WNDCLASSEXW wc{};
 	wc.cbSize = sizeof(wc);
 	wc.lpfnWndProc = WndProc;
 	wc.hInstance = inst;
 	wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-	wc.hbrBackground = CreateSolidBrush(RGB(18, 18, 20));
+	wc.hbrBackground = DuiBgBrush();
 	wc.lpszClassName = L"Dlss5NrSetup";
 	RegisterClassExW(&wc);
 
-	RECT wr{0, 0, 540, 480};
+	RECT wr{0, 0, 560, 520};
 	AdjustWindowRect(&wr, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE);
 	HWND hwnd = CreateWindowExW(0, L"Dlss5NrSetup", L"DLSS 5 NR — установка",
 	                            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT,
 	                            wr.right - wr.left, wr.bottom - wr.top, nullptr, nullptr, inst, nullptr);
-	BOOL dark = TRUE;
-	DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark));
+	DuiDarkTitlebar(hwnd);
 	ShowWindow(hwnd, show);
 
 	MSG msg;
