@@ -1,5 +1,6 @@
 ﻿#include "dark_ui.h"
 
+#include <objidl.h>
 #include <commctrl.h>
 #include <dwmapi.h>
 #include <gdiplus.h>
