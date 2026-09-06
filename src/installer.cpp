@@ -5,6 +5,8 @@
 #include <dwmapi.h>
 #include <shlobj.h>
 #include <shobjidl.h>
+#include <knownfolders.h>
+#include <objbase.h>
 
 #include "setup_res.h"
 #include "dark_ui.h"
@@ -27,7 +29,8 @@ enum {
 	IDC_LOG = 404,
 	IDC_REG = 405,
 	IDC_SVP = 406,
-	IDC_PROFILES = 407
+	IDC_PROFILES = 407,
+	IDC_SETTINGS = 408
 };
 
 static HWND g_path, g_log, g_reg, g_svp, g_profiles;
@@ -259,6 +262,65 @@ static void WriteLauncher(const std::wstring &pot)
 	CloseHandle(h);
 }
 
+static std::wstring KnownDir(REFKNOWNFOLDERID id)
+{
+	PWSTR p = nullptr;
+	std::wstring out;
+	if (SUCCEEDED(SHGetKnownFolderPath(id, 0, nullptr, &p)) && p) {
+		out = p;
+		CoTaskMemFree(p);
+	}
+	return out;
+}
+
+static bool CreateShortcut(const std::wstring &lnk, const std::wstring &target, const std::wstring &workdir)
+{
+	IShellLinkW *sl = nullptr;
+	if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW, (void **)&sl)))
+		return false;
+	sl->SetPath(target.c_str());
+	sl->SetWorkingDirectory(workdir.c_str());
+	sl->SetIconLocation(target.c_str(), 0);
+	sl->SetDescription(L"Настройки DLSS 5 Neural Rendering");
+	IPersistFile *pf = nullptr;
+	HRESULT hr = sl->QueryInterface(IID_IPersistFile, (void **)&pf);
+	if (SUCCEEDED(hr) && pf) {
+		hr = pf->Save(lnk.c_str(), TRUE);
+		pf->Release();
+	}
+	sl->Release();
+	return SUCCEEDED(hr);
+}
+
+static std::wstring SettingsHome() { return Join(LocalApp(), L"potplayer-dlss5-nr"); }
+
+static bool PlaceSettings(HWND hwnd, const std::wstring &pot, bool launch)
+{
+	std::wstring home = SettingsHome();
+	EnsureDir(home);
+	std::wstring local = Join(home, L"nr-settings.exe");
+	if (!ExtractRes(IDR_SETTINGS, local))
+		return false;
+	if (!pot.empty() && IsDir(pot)) {
+		CopyFileW(local.c_str(), Join(pot, L"nr-settings.exe").c_str(), FALSE);
+		WriteLauncher(pot);
+	}
+	std::wstring desk = KnownDir(FOLDERID_Desktop);
+	if (!desk.empty()) {
+		CreateShortcut(Join(desk, L"DLSS 5 NR — настройки.lnk"), local, home);
+		Log(L"ярлык на рабочем столе");
+	}
+	std::wstring prog = KnownDir(FOLDERID_Programs);
+	if (!prog.empty()) {
+		EnsureDir(Join(prog, L"DLSS 5 NR"));
+		CreateShortcut(Join(Join(prog, L"DLSS 5 NR"), L"DLSS 5 NR — настройки.lnk"), local, home);
+	}
+	Log((L"nr-settings.exe → " + local).c_str());
+	if (launch)
+		ShellExecuteW(hwnd, L"open", local.c_str(), nullptr, home.c_str(), SW_SHOWNORMAL);
+	return true;
+}
+
 static void DoInstall(HWND hwnd)
 {
 	wchar_t path[MAX_PATH]{};
@@ -311,9 +373,8 @@ static void DoInstall(HWND hwnd)
 	std::wstring vsfound;
 	if (FindNamed(pot, L"vapoursynth.dll", 0, vsfound))
 		ExtractRes(IDR_VSNR, Join(DirOf(vsfound), L"vsdlss5nr.dll"));
-	ok &= ExtractRes(IDR_SETTINGS, Join(pot, L"nr-settings.exe"));
 	ok &= ExtractRes(IDR_POTFILTER, Join(pot, L"nr-potfilter.dll"));
-	WriteLauncher(pot);
+	PlaceSettings(hwnd, pot, false);
 
 	if (SendMessageW(g_profiles, BM_GETCHECK, 0, 0) == BST_CHECKED) {
 		ExtractRes(IDR_GPU3NR, Join(scripts, L"GPU-3-High-NR.avs"));
@@ -347,8 +408,10 @@ static void DoInstall(HWND hwnd)
 	if (ok) {
 		Log(L"");
 		Log(L"Готово. В PotPlayer: AviSynth-скрипт GPU-3-High-NR.avs");
-		Log(L"Настройки: F5 → Фильтры → Менеджер фильтров → DLSS 5 NR");
-		MessageBoxW(hwnd, L"Установка завершена.", L"DLSS 5 NR", MB_OK | MB_ICONINFORMATION);
+		Log(L"Настройки модели: ярлык на столе или кнопка «Настройки»");
+		MessageBoxW(hwnd, L"Установка завершена.\n\nСейчас откроется окно настроек DLSS 5 NR.", L"DLSS 5 NR",
+		            MB_OK | MB_ICONINFORMATION);
+		PlaceSettings(hwnd, pot, true);
 	} else {
 		Log(L"Были ошибки — смотри лог.");
 		MessageBoxW(hwnd, L"Часть файлов не скопировалась. Закрой PotPlayer и повтори.", L"DLSS 5 NR",
@@ -376,6 +439,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 		SendMessageW(g_reg, BM_SETCHECK, BST_CHECKED, 0);
 		SendMessageW(g_profiles, BM_SETCHECK, BST_CHECKED, 0);
 		DuiButton(hwnd, IDC_INSTALL, L"Установить", 24, 260, 200, 42, true);
+		DuiButton(hwnd, IDC_SETTINGS, L"Настройки", 236, 260, 200, 42, false);
 		g_log = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
 		                        WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, 24,
 		                        318, 508, 170, hwnd, (HMENU)IDC_LOG, GetModuleHandleW(nullptr), nullptr);
@@ -391,6 +455,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 				SetWindowTextW(g_path, p.c_str());
 		} else if (LOWORD(wParam) == IDC_INSTALL) {
 			DoInstall(hwnd);
+		} else if (LOWORD(wParam) == IDC_SETTINGS) {
+			wchar_t path[MAX_PATH]{};
+			GetWindowTextW(g_path, path, MAX_PATH);
+			std::wstring pot = path;
+			if (!IsDir(pot))
+				pot.clear();
+			if (!PlaceSettings(hwnd, pot, true))
+				MessageBoxW(hwnd, L"Не удалось распаковать nr-settings.exe", L"DLSS 5 NR", MB_OK | MB_ICONWARNING);
 		}
 		return 0;
 	case WM_CTLCOLORSTATIC: {
