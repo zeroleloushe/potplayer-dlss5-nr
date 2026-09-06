@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 cmake_policy(SET CMP0091 NEW)
-project(potplayer-dlss5-nr VERSION 0.1.9 LANGUAGES CXX)
+project(potplayer-dlss5-nr VERSION 0.2.0 LANGUAGES CXX)
 
 if(POLICY CMP0169)
   cmake_policy(SET CMP0169 OLD)
@@ -70,5 +70,17 @@ target_compile_definitions(nr-potfilter PRIVATE UNICODE _UNICODE NOMINMAX)
 target_compile_options(nr-potfilter PRIVATE /utf-8)
 set_target_properties(nr-potfilter PROPERTIES PREFIX "" OUTPUT_NAME "nr-potfilter")
 
-install(TARGETS nr-caller-shim DLSS5NR vsdlss5nr nr-settings nr-potfilter RUNTIME DESTINATION bin)
+file(TO_CMAKE_PATH "${CMAKE_BINARY_DIR}" SETUP_BIN)
+file(TO_CMAKE_PATH "${CMAKE_SOURCE_DIR}" SETUP_SRC)
+configure_file("${CMAKE_SOURCE_DIR}/src/setup_payload.rc.in" "${CMAKE_BINARY_DIR}/setup_payload.rc" @ONLY)
+
+add_executable(nr-setup WIN32 src/installer.cpp "${CMAKE_BINARY_DIR}/setup_payload.rc")
+target_include_directories(nr-setup PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(nr-setup PRIVATE comctl32 ole32 oleaut32 uuid dwmapi shell32)
+target_compile_definitions(nr-setup PRIVATE UNICODE _UNICODE NOMINMAX)
+target_compile_options(nr-setup PRIVATE /utf-8)
+set_target_properties(nr-setup PROPERTIES OUTPUT_NAME "DLSS5-NR-Setup")
+add_dependencies(nr-setup DLSS5NR vsdlss5nr nr-caller-shim nr-settings nr-potfilter)
+
+install(TARGETS nr-caller-shim DLSS5NR vsdlss5nr nr-settings nr-potfilter nr-setup RUNTIME DESTINATION bin)
 install(FILES scripts/after_svp.avs scripts/after_svp.vpy tools/install-portable.ps1 DESTINATION .)
