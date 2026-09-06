@@ -1,10 +1,12 @@
-﻿#include "setup_res.h"
-
+﻿#define UNICODE
+#define _UNICODE
+#include <windows.h>
 #include <commctrl.h>
 #include <dwmapi.h>
 #include <shlobj.h>
 #include <shobjidl.h>
-#include <windows.h>
+
+#include "setup_res.h"
 
 #include <cstring>
 #include <string>
